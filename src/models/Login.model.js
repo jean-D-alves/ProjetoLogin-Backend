@@ -1,23 +1,31 @@
-import getConnection from "../config/db.js";
+import pool from "../config/db.js";
 
-export async function Post(name, email, password, age) {
-  const connection = await getConnection();
-  const sql = "INSERT INTO user(name,email,password,age) VALUES (?,?,?,?)";
-  const [result] = await connection.execute(sql, [name, email, password, age]);
-  await connection.end();
-  return result;
+export async function createUser({ name, email, password, age, role }) {
+  const sql = `
+    INSERT INTO users (name, email, password, age, role)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id, name, email, age, role
+  `;
+
+  const result = await pool.query(sql, [
+    name,
+    email,
+    password,
+    age,
+    role ?? "user",
+  ]);
+
+  return result.rows[0];
 }
 
-export async function Get(email) {
-  const connection = await getConnection();
-  const sql = "SELECT * FROM user WHERE email = ?";
-  const [row] = await connection.execute(sql, [email]);
-  return row;
+export async function getUserByEmail(email) {
+  const sql = "SELECT * FROM users WHERE email = $1";
+  const result = await pool.query(sql, [email]);
+  return result.rows[0];
 }
 
-export async function GetAll() {
-  const connection = await getConnection();
-  const sql = "SELECT * FROM user";
-  const [row] = await connection.execute(sql);
-  return row;
+export async function getAllUsers() {
+  const sql = "SELECT * FROM users";
+  const result = await pool.query(sql);
+  return result.rows;
 }

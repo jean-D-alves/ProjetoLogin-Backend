@@ -1,4 +1,9 @@
-import * as LoginModel from "../models/Login.model.js";
+import {
+  createUser,
+  getUserByEmail,
+  getAllUsers,
+} from "../models/Login.model.js";
+
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 
@@ -21,56 +26,70 @@ class Response {
 }
 
 export async function CreateUser(req, res) {
-  const { name, email, password, age } = req.body;
+  const { name, email, password, age, role } = req.body;
+
   const hashPassword = await bcrypt.hash(password, 12);
-  const creation = await LoginModel.Post(name, email, hashPassword, age);
+
+  const creation = await createUser({
+    name,
+    email,
+    password: hashPassword,
+    age,
+    role,
+  });
+
   if (!creation) {
     const notCreate = new Response(
       400,
       "Bad Request",
-      {
-        message: "user not create",
-      },
-      "GET"
+      { message: "user not created" },
+      "POST"
     );
-    res.status(notCreate.status).json(notCreate.toJSON());
+    return res.status(notCreate.status).json(notCreate.toJSON());
   }
-  const response = new Response(200, "ok", creation, "POST");
+
+  const response = new Response(201, "Created", creation, "POST");
   res.status(response.status).json(response.toJSON());
 }
 
 export async function LoginUser(req, res) {
   const { email, password } = req.body;
-  const users = await LoginModel.Get(email);
-  const user = users[0];
+
+  const user = await getUserByEmail(email);
+
   if (!user) {
     const erroOfUser = new Response(
       400,
       "Bad Request",
-      {
-        message: "This user does not exist.",
-      },
-      "GET"
-    );
-    res.status(erroOfUser.status).json(erroOfUser.toJSON());
-  }
-  const passwordValid = await bcrypt.compare(password, user.password);
-  if (!passwordValid) {
-    const erroOfUser = new Response(
-      400,
-      "Bad Request",
-      {
-        message: "This password invalidates that.",
-      },
-      "GET"
+      { message: "This user does not exist." },
+      "POST"
     );
     return res.status(erroOfUser.status).json(erroOfUser.toJSON());
   }
+
+  const passwordValid = await bcrypt.compare(password, user.password);
+
+  if (!passwordValid) {
+    const erroOfPassword = new Response(
+      400,
+      "Bad Request",
+      { message: "Invalid password." },
+      "POST"
+    );
+    return res.status(erroOfPassword.status).json(erroOfPassword.toJSON());
+  }
+
   const token = jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
     process.env.SECRET_JWT,
     { expiresIn: "1h" }
   );
+
   const response = new Response(
     200,
     "ok",
@@ -79,64 +98,53 @@ export async function LoginUser(req, res) {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
       },
-      token: token,
+      token,
     },
     "POST"
   );
+
   res.status(response.status).json(response.toJSON());
 }
 
 export async function ShowAllUser(req, res) {
-  const usersArray = await LoginModel.GetAll();
-  if (!usersArray) {
+  const usersArray = await getAllUsers();
+
+  if (!usersArray || usersArray.length === 0) {
     const erroOfUsers = new Response(
-      400,
-      "Bad Request",
-      {
-        message: "This password invalidates that.",
-      },
+      404,
+      "Not Found",
+      { message: "No users found." },
       "GET"
     );
-    res.status(erroOfUsers.status).json(erroOfUsers.toJSON());
+    return res.status(erroOfUsers.status).json(erroOfUsers.toJSON());
   }
-  const userObject = Object.fromEntries(
-    usersArray.map((user) => {
-      const { password, ...safeUser } = user;
-      return [user.id, safeUser];
-    })
-  );
-  const { password, ...semPassword } = userObject;
-  const response = new Response(200, "ok", userObject, "POST");
+
+  const safeUsers = usersArray.map(({ password, ...user }) => user);
+
+  const response = new Response(200, "ok", safeUsers, "GET");
   res.status(response.status).json(response.toJSON());
 }
 
 export async function ShowUser(req, res) {
-  const { email, password } = req.user;
-  const users = await LoginModel.Get(email);
-  const user = users[0];
+  const { email } = req.user;
+
+  const user = await getUserByEmail(email);
+
   if (!user) {
     const erroOfUser = new Response(
-      400,
-      "Bad Request",
-      {
-        message: "This user does not exist.",
-      },
+      404,
+      "Not Found",
+      { message: "This user does not exist." },
       "GET"
     );
-    res.status(erroOfUser.status).json(erroOfUser.toJSON());
+    return res.status(erroOfUser.status).json(erroOfUser.toJSON());
   }
-  const response = new Response(
-    200,
-    "ok",
-    {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
-    },
-    "POST"
-  );
+
+  const { password, ...safeUser } = user;
+
+  const response = new Response(200, "ok", { user: safeUser }, "GET");
+
   res.status(response.status).json(response.toJSON());
 }
